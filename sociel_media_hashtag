@@ -1,0 +1,68 @@
+
+import streamlit as st
+import requests
+import json
+import boto3
+import json
+import boto3
+from collections import Counter
+
+st.title("Social Media Post Composer")
+
+post_content = st.text_area("Write your post here:")
+if st.button("Post"):
+    response = requests.post("https://your-api-endpoint", json={"content": post_content})
+    if response.status_code == 200:
+        st.success("Post submitted successfully!")
+    else:
+        st.error("Failed to submit post.")
+
+if st.button("Show Trending Hashtags"):
+    response = requests.get("https://your-api-endpoint/trending")
+    if response.status_code == 200:
+        trending_hashtags = response.json().get("hashtags", [])
+        st.write("Trending Hashtags:")
+        for hashtag in trending_hashtags:
+            st.write(f"- {hashtag}")
+    else:
+        st.error("Failed to retrieve trending hashtags.")
+
+
+
+def lambda_handler(event, context):
+    post_content = event.get("content", "")
+    hashtags = [word for word in post_content.split() if word.startswith("#")]
+    post_text = ' '.join([word for word in post_content.split() if not word.startswith("#")])
+    
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('Posts')
+    table.put_item(
+        Item={
+            'post_id': context.aws_request_id,
+            'post_text': post_text,
+            'hashtags': hashtags
+        }
+    )
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Post processed successfully!')
+    }
+
+
+
+def lambda_handler(event, context):
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('Posts')
+    
+    response = table.scan()
+    items = response.get('Items', [])
+    
+    all_hashtags = [hashtag for item in items for hashtag in item.get('hashtags', [])]
+    trending_hashtags = Counter(all_hashtags).most_common(10)
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps({'hashtags': [hashtag for hashtag, count in trending_hashtags]})
+    }
+
